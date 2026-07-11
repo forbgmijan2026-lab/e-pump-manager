@@ -1,0 +1,1192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
+    <title>⛽ Petrol Pump Manager | Persistent Data | Full Features</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        * { box-sizing: border-box; }
+        body { background: #f3f4f6; }
+        .tab-active { border-bottom: 3px solid #2563eb; color: #1e3a8a; font-weight: bold; }
+        .table-input { border: 1px solid #cbd5e1; border-radius: 0.5rem; padding: 0.4rem 0.6rem; width: 100%; }
+        .delete-row-btn, .edit-row-btn { cursor: pointer; }
+        .add-btn { background: #3b82f6; color: white; border-radius: 9999px; padding: 0.25rem 1rem; font-size: 0.8rem; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+        .card-shadow { box-shadow: 0 8px 20px rgba(0,0,0,0.05); }
+        .modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); display: flex; justify-content: center; align-items: center; z-index: 1000; }
+        .modal-content { background: white; padding: 20px; border-radius: 12px; width: 90%; max-width: 500px; }
+        .autocomplete-items { position: absolute; border: 1px solid #ccc; background: white; max-height: 150px; overflow-y: auto; z-index: 99; border-radius: 4px; }
+        .autocomplete-item { padding: 6px 10px; cursor: pointer; }
+        .autocomplete-item:hover { background-color: #e9e9e9; }
+        .fixed-badge { background: #dbeafe; color: #1e40af; font-size: 0.7rem; border-radius: 20px; padding: 0.1rem 0.5rem; margin-left: 8px; }
+        .closed-badge { background: #fee2e2; color: #991b1b; font-size: 0.7rem; border-radius: 20px; padding: 0.1rem 0.5rem; margin-left: 8px; }
+        .udhaar-paid-row { background-color: #dcfce7; }
+        .udhaar-pending-row { background-color: #fee2e2; }
+        .pdf-export-container { padding: 20px; background: white; font-family: sans-serif; width: 100%; }
+        .pdf-export-container table { border-collapse: collapse; width: 100%; }
+        .pdf-export-container th, .pdf-export-container td { border: 1px solid #999; padding: 6px; text-align: left; }
+        .hidden { display: none; }
+        button { cursor: pointer; }
+        .modal input, .modal select { margin-bottom: 12px; }
+    </style>
+</head>
+<body class="bg-gray-100 font-sans antialiased">
+
+<div class="max-w-7xl mx-auto px-4 py-5">
+    <!-- Tabs -->
+    <div class="bg-white rounded-2xl shadow-md p-2 mb-6 flex flex-wrap gap-2 border-b">
+        <button class="tab-btn px-4 py-2 rounded-lg font-medium text-gray-700" data-tab="daily">📋 Daily Sales</button>
+        <button class="tab-btn px-4 py-2 rounded-lg font-medium text-gray-700" data-tab="purchase">📦 Purchase Register</button>
+        <button class="tab-btn px-4 py-2 rounded-lg font-medium text-gray-700" data-tab="ledger">📒 Party Ledger</button>
+        <button class="tab-btn px-4 py-2 rounded-lg font-medium text-gray-700" data-tab="transactions">💸 Transactions Ledger</button>
+        <button class="tab-btn px-4 py-2 rounded-lg font-medium text-gray-700" data-tab="udhaar">🧾 Udhaar Report</button>
+
+        <button class="tab-btn px-4 py-2 rounded-lg font-medium bg-gray-200" id="backupBtn">💾 Backup / Restore</button>
+    </div>
+
+    <!-- Daily Sales Tab (same structure) -->
+    <div id="dailyTab" class="tab-content">
+        <div class="bg-white rounded-2xl card-shadow p-5 border">
+            <div class="flex flex-wrap justify-between items-center mb-4">
+                <h2 class="text-2xl font-bold">⛽ Daily Sales Entry</h2>
+                <div class="flex gap-3">
+                    <input type="date" id="dailyDate" class="border rounded-lg px-3 py-2">
+                    <button id="loadDailyBtn" class="bg-gray-200 px-4 py-2 rounded-lg">Load</button>
+                    <button id="saveDailyBtn" class="bg-green-600 text-white px-5 py-2 rounded-lg">💾 Save</button>
+                    <button id="clearFormBtn" class="bg-red-500 text-white px-4 py-2 rounded-lg"><i class="fas fa-eraser"></i> Clear</button>
+                </div>
+            </div>
+            <!-- Nozzle tables -->
+            <div class="grid md:grid-cols-2 gap-6">
+                <div><h3 class="font-bold">Petrol Nozzles</h3><table class="w-full text-sm border"><thead class="bg-gray-100"><tr><th>Nozzle</th><th>End (Ltr)</th><th>Start (Ltr)</th><th>Net (Ltr)</th></tr></thead><tbody id="petrolTbody"></tbody></table></div>
+                <div><h3 class="font-bold">Diesel Nozzles</h3><table class="w-full text-sm border"><thead class="bg-gray-100"><tr><th>Nozzle</th><th>End (Ltr)</th><th>Start (Ltr)</th><th>Net (Ltr)</th></tr></thead><tbody id="dieselTbody"></tbody></table></div>
+            </div>
+            <div class="flex flex-wrap gap-4 mt-3 bg-blue-50 p-3 rounded">
+                <span>⛽ Total Petrol (Raw): <strong id="totalPetrolRaw">0.00</strong> Ltr</span>
+                <span>🛢️ Total Diesel (Raw): <strong id="totalDieselRaw">0.00</strong> Ltr</span>
+            </div>
+            <div class="grid md:grid-cols-2 gap-4 mt-3">
+                <div><label>Petrol Test (Ltr)</label><input type="number" id="petrolTestLtr" class="table-input" value="0" step="0.1"></div>
+                <div><label>Diesel Test (Ltr)</label><input type="number" id="dieselTestLtr" class="table-input" value="0" step="0.1"></div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-4 mt-3 bg-green-50 p-3 rounded">
+                <div>✅ Net Petrol Sale: <span id="netPetrolLtr">0.00</span> Ltr</div>
+                <div>✅ Net Diesel Sale: <span id="netDieselLtr">0.00</span> Ltr</div>
+            </div>
+            <div class="grid md:grid-cols-2 gap-4 mt-3">
+                <div><label>Petrol Price (₹/Ltr)</label><input type="number" id="petrolPrice" class="table-input" value="105.5" step="0.01"></div>
+                <div><label>Diesel Price (₹/Ltr)</label><input type="number" id="dieselPrice" class="table-input" value="92.8" step="0.01"></div>
+            </div>
+            <div class="grid md:grid-cols-3 gap-4 mt-2 bg-yellow-50 p-3 rounded">
+                <div>💰 Petrol Amount: <span id="petrolAmount">₹0.00</span></div>
+                <div>💰 Diesel Amount: <span id="dieselAmount">₹0.00</span></div>
+                <div>💰 Total Sale: <span id="netSaleAmountDaily" class="font-bold text-indigo-700">₹0.00</span></div>
+            </div>
+
+            <!-- Udhaar Di & Jama -->
+            <div class="mt-5 border-t pt-4"><div class="flex justify-between"><h3 class="font-bold">📌 Udhaar Di (Credit Given)</h3><button id="addUdhaarDiDaily" class="add-btn">+ Add</button></div><table class="w-full mt-1"><thead><tr><th>Name</th><th>Info</th><th>Amount(₹)</th><th></th></tr></thead><tbody id="dailyUdhaarDiBody"></tbody></table></div>
+            <div class="mt-4"><div class="flex justify-between"><h3 class="font-bold">📌 Udhaar Jama (Credit Received)</h3><button id="addUdhaarJamaDaily" class="add-btn">+ Add</button></div><table class="w-full mt-1"><thead><tr><th>Name</th><th>Info</th><th>Amount(₹)</th><th></th></tr></thead><tbody id="dailyUdhaarJamaBody"></tbody></table></div>
+            
+            <div class="mt-4"><div class="flex justify-between"><h3 class="font-bold">➕ Extra Payment</h3><button id="addExtraDaily" class="add-btn">+ Add</button></div><table class="w-full mt-1"><thead><tr><th>Info</th><th>Amount</th><th></th></tr></thead><tbody id="dailyExtraBody"></tbody></table></div>
+            <div class="mt-4"><div class="flex justify-between"><h3 class="font-bold">💰 Other Payment</h3><button id="addOtherPaymentDaily" class="add-btn">+ Add</button></div><table class="w-full mt-1"><thead><tr><th>Info</th><th>Amount</th><th></th></tr></thead><tbody id="dailyOtherPaymentBody"></tbody></table></div>
+            <div class="mt-4"><div class="flex justify-between"><h3 class="font-bold">💸 Expenses</h3><button id="addExpenseDaily" class="add-btn">+ Add</button></div><table class="w-full mt-1"><thead><tr><th>Info</th><th>Amount</th><th></th></tr></thead><tbody id="dailyExpenseBody"></tbody></table></div>
+            <div class="mt-4"><div class="flex justify-between"><h3 class="font-bold">💵 Cash Diya</h3><button id="addCashDiyaDaily" class="add-btn">+ Add</button></div><table class="w-full mt-1"><thead><tr><th>Info</th><th>Amount</th><th></th></tr></thead><tbody id="dailyCashDiyaBody"></tbody></table></div>
+            <div class="mt-4"><h3 class="font-bold">💳 Payment Methods</h3><div class="grid grid-cols-2 gap-3"><div><label>Cash</label><input type="number" id="cashDaily" class="table-input" value="0"></div><div><label>UPI</label><input type="number" id="upiDaily" class="table-input" value="0"></div></div><button id="addOtherPayDaily" class="add-btn mt-2">+ Other Method</button><table class="w-full mt-2"><thead><tr><th>Method</th><th>Amount</th><th></th></tr></thead><tbody id="dailyOtherBody"></tbody></table></div>
+
+            <!-- Tank Dip -->
+            <div class="mt-4 bg-gray-100 p-3 rounded">
+                <h3 class="font-bold">Tank Dip & Variance</h3>
+                <div class="grid md:grid-cols-2 gap-4">
+                    <div><label>Tank 1 (Petrol) Dip(cm)</label><input type="number" id="tank1Dip" class="table-input"><label>Closing Stock (L)</label><input type="number" id="tank1Closing" class="table-input"><span>Vol from Dip: <span id="tank1Vol">0</span> L, Var: <span id="tank1Var">0</span></span><button id="showTankerModal1" class="text-xs bg-blue-100 px-2 py-1 rounded mt-1">+ Petrol Tanker</button></div>
+                    <div><label>Tank 2 (Diesel) Dip(cm)</label><input type="number" id="tank2Dip" class="table-input"><label>Closing Stock (L)</label><input type="number" id="tank2Closing" class="table-input"><span>Vol from Dip: <span id="tank2Vol">0</span> L, Var: <span id="tank2Var">0</span></span><button id="showTankerModal2" class="text-xs bg-blue-100 px-2 py-1 rounded mt-1">+ Diesel Tanker</button></div>
+                </div>
+                <div class="mt-2 text-center"><button id="showMixedTankerModal" class="bg-purple-600 text-white px-4 py-2 rounded-lg shadow text-sm"><i class="fas fa-blender"></i> Mixed Tanker (Petrol + Diesel)</button></div>
+            </div>
+
+            <div class="mt-4 flex justify-end"><button id="calculateTotalsBtn" class="bg-orange-500 text-white px-6 py-2 rounded-lg shadow font-bold"><i class="fas fa-calculator"></i> Calculate Totals</button></div>
+            <div class="mt-4 bg-green-50 p-4 rounded-xl"><h3 class="font-bold">📊 Daily Summary</h3><div>Total Income: <span id="totalIncomeDaily">₹0</span></div><div title="Includes Udhaar Di, Expenses, Cash Diya AND Cash/UPI/Other collected (for reconciliation) — not pure business expense.">Total Cash-Out / Collected (Reconciliation): <span id="totalOutDaily">₹0</span> <i class="fas fa-circle-info text-gray-400 text-xs"></i></div><div class="text-xl font-bold">Net Balance: <span id="netBalanceDaily">₹0</span></div><div class="text-xs text-gray-500 mt-1">Net Balance should be ₹0 if all sale amount is correctly accounted for in Cash/UPI/Other + Udhaar Di − Udhaar Jama.</div></div>
+        </div>
+    </div>
+
+    <!-- Purchase Register Tab -->
+    <div id="purchaseTab" class="tab-content hidden">
+        <div class="bg-white rounded-2xl card-shadow p-5">
+            <div class="flex justify-between items-center mb-4"><h2 class="text-2xl font-bold">📦 Purchase Register</h2><button id="addPurchaseBtn" class="add-btn text-base">+ Manual Purchase</button></div>
+            <div class="overflow-x-auto"><table class="w-full border"><thead class="bg-gray-100"><tr><th>Date</th><th>Invoice No.</th><th>Vehicle No.</th><th>Supplier</th><th>Product</th><th>Liters</th><th>Total Amount (₹)</th><th>Action</th></tr></thead><tbody id="purchaseTbody"></tbody></table></div>
+        </div>
+    </div>
+
+    <!-- Party Ledger Tab -->
+    <div id="ledgerTab" class="tab-content hidden"><div class="bg-white rounded-2xl card-shadow p-5"><h2 class="text-2xl font-bold mb-3">📒 Party Ledger</h2><div class="flex flex-wrap gap-3 mb-4"><input type="text" id="partySearch" placeholder="Search Party" class="border rounded px-3 py-2 w-64"><button id="searchPartyBtn" class="bg-blue-500 text-white px-3 py-2 rounded">Search</button><button id="addPartyBtn" class="bg-indigo-600 text-white px-3 py-2 rounded">+ New Party</button><button id="addTransactionBtn" class="bg-amber-600 text-white px-3 py-2 rounded">+ Manual Entry</button><label class="flex items-center gap-2"><input type="checkbox" id="showClosedCheckbox"> Show Closed</label></div><div class="flex flex-wrap gap-3 mb-4"><select id="partyLedgerFilter" class="border rounded px-3 py-2"><option value="default">No Filter (Default)</option><option value="by_transactions">By Number of Transactions</option><option value="by_due_amount">By Due Amount (High to Low)</option><option value="by_name">By Party Name (A-Z)</option></select></div><div id="partyLedgerContainer"></div></div></div>
+
+    <!-- Transactions Ledger Tab -->
+    <div id="transactionsTab" class="tab-content hidden"><div class="bg-white rounded-2xl card-shadow p-5"><h2 class="text-2xl font-bold mb-3">📊 Transactions Ledger</h2><div class="flex flex-wrap gap-3 mb-4 items-end"><div><label>From Date</label><input type="date" id="transStartDate" class="border rounded px-3 py-2"></div><div><label>To Date</label><input type="date" id="transEndDate" class="border rounded px-3 py-2"></div><div><label>Type</label><select id="transTypeFilter" class="border rounded px-3 py-2"><option value="all">All</option><option value="expense">Expenses</option><option value="extra">Extra Payment</option><option value="otherPayment">Other Payment</option><option value="cashDiya">Cash Diya</option></select></div><button id="filterTransactionsBtn" class="bg-blue-600 text-white px-4 py-2 rounded">Filter</button><button id="addManualTransBtn" class="bg-green-600 text-white px-4 py-2 rounded">+ Manual Entry</button><button id="exportTransPdfBtn" class="bg-red-600 text-white px-4 py-2 rounded">📄 PDF Export</button></div><div class="overflow-x-auto"><table class="w-full border text-sm"><thead class="bg-gray-100"><tr><th>Date</th><th>Type</th><th>Description</th><th>Amount (₹)</th><th>Actions</th></tr></thead><tbody id="transactionsTbody"></tbody></table></div></div></div>
+
+    <!-- Udhaar Report Tab -->
+    <div id="udhaarTab" class="tab-content hidden"><div class="bg-white rounded-2xl card-shadow p-5"><h2 class="text-2xl font-bold mb-3">🧾 Udhaar Report (FIFO)</h2><div class="flex flex-wrap gap-4 mb-5 items-end"><div><label>From Date</label><input type="date" id="udhaarStartDate" class="border rounded px-3 py-2"></div><div><label>To Date</label><input type="date" id="udhaarEndDate" class="border rounded px-3 py-2"></div><div><label>Filter</label><select id="udhaarStatusFilter" class="border rounded px-3 py-2"><option value="all">All Bills</option><option value="clear">Clear Bills</option><option value="due">Due Bills</option></select></div><button id="generateUdhaarReport" class="bg-blue-700 text-white px-5 py-2 rounded-lg">Show Report</button><button id="downloadUdhaarPDF" class="bg-red-600 text-white px-5 py-2 rounded-lg">PDF Export</button></div><div class="overflow-x-auto"><table class="w-full border text-sm" id="udhaarReportTable"><thead><tr><th>Party</th><th>Bill Date</th><th>Bill Amt</th><th>Paid</th><th>Last Payment</th><th>Remaining</th><th>Status</th></tr></thead><tbody id="udhaarReportTbody"><tr><td colspan="7">Select date range and click Show Report</td></tr></tbody></table></div><div class="mt-3 text-right font-bold" id="udhaarTotalOutstanding"></div></div></div>
+
+    <!-- Reports Tab -->
+
+</div>
+
+<script>
+    // ==================== CALIBRATION (CORRECTED from official 20KL Tank Calibration Chart) ====================
+    const calibrationPoints = [[0,0],[1,11.97],[2,33.89],[3,62.22],[4,95.71],[5,133.61],[6,175.43],[7,220.80],[8,269.41],[9,321.05],[10,375.51],[11,432.63],[12,492.26],[13,554.27],[14,618.56],[15,685.03],[16,753.57],[17,824.11],[18,896.57],[19,970.88],[20,1046.97],[21,1124.79],[22,1204.28],[23,1285.38],[24,1368.04],[25,1452.22],[26,1537.87],[27,1624.95],[28,1713.41],[29,1803.22],[30,1894.35],[31,1986.75],[32,2080.39],[33,2175.24],[34,2271.27],[35,2368.44],[36,2466.74],[37,2566.12],[38,2666.57],[39,2768.05],[40,2870.54],[41,2974.02],[42,3078.46],[43,3183.83],[44,3290.12],[45,3397.31],[46,3505.36],[47,3614.26],[48,3723.99],[49,3834.53],[50,3945.86],[51,4057.96],[52,4170.80],[53,4284.38],[54,4398.67],[55,4513.65],[56,4629.31],[57,4745.63],[58,4862.59],[59,4980.18],[60,5098.38],[61,5217.17],[62,5336.53],[63,5456.46],[64,5576.94],[65,5697.94],[66,5819.46],[67,5941.48],[68,6063.98],[69,6186.96],[70,6310.39],[71,6434.26],[72,6558.56],[73,6683.28],[74,6808.39],[75,6933.89],[76,7059.77],[77,7186.00],[78,7312.58],[79,7439.49],[80,7566.72],[81,7694.26],[82,7822.09],[83,7950.20],[84,8078.58],[85,8207.21],[86,8336.09],[87,8465.20],[88,8594.52],[89,8724.05],[90,8853.77],[91,8983.68],[92,9113.75],[93,9243.97],[94,9374.34],[95,9504.85],[96,9635.47],[97,9766.20],[98,9897.02],[99,10027.93],[100,10158.91],[101,10289.95],[102,10421.04],[103,10552.16],[104,10683.31],[105,10814.47],[106,10945.62],[107,11076.77],[108,11207.89],[109,11338.98],[110,11470.02],[111,11601.00],[112,11731.91],[113,11862.73],[114,11993.46],[115,12124.08],[116,12254.59],[117,12384.96],[118,12515.18],[119,12645.26],[120,12775.16],[121,12904.88],[122,13034.41],[123,13163.73],[124,13292.84],[125,13421.72],[126,13550.35],[127,13678.73],[128,13806.84],[129,13934.67],[130,14062.21],[131,14189.44],[132,14316.35],[133,14442.93],[134,14569.16],[135,14695.04],[136,14820.54],[137,14945.65],[138,15070.37],[139,15194.67],[140,15318.54],[141,15441.97],[142,15564.95],[143,15687.45],[144,15809.47],[145,15930.99],[146,16051.99],[147,16172.47],[148,16292.40],[149,16411.76],[150,16530.55],[151,16648.75],[152,16766.34],[153,16883.30],[154,16999.62],[155,17115.28],[156,17230.26],[157,17344.55],[158,17458.13],[159,17570.97],[160,17683.07],[161,17794.40],[162,17904.94],[163,18014.67],[164,18123.57],[165,18231.62],[166,18338.81],[167,18445.10],[168,18550.47],[169,18654.91],[170,18758.39],[171,18860.88],[172,18962.36],[173,19062.81],[174,19162.19],[175,19260.49],[176,19357.66],[177,19453.69],[178,19548.54],[179,19642.18],[180,19734.58],[181,19825.71],[182,19915.52],[183,20003.98],[184,20091.06],[185,20176.71],[186,20260.89],[187,20343.55],[188,20424.65],[189,20504.14],[190,20581.96],[191,20658.05],[192,20732.36],[193,20804.82],[194,20875.36],[195,20943.91],[196,21010.37],[197,21074.66],[198,21136.67],[199,21196.30],[200,21253.42],[201,21307.88],[202,21359.52],[203,21408.13],[204,21453.50],[205,21495.32],[206,21533.22],[207,21566.71],[208,21595.04]];
+    function getVolumeFromDip(dip) { if (dip <= 0) return 0; if (dip >= 208) return calibrationPoints[calibrationPoints.length-1][1] + (dip-208)*28; for (let i = 0; i < calibrationPoints.length - 1; i++) { let [d1, v1] = calibrationPoints[i]; let [d2, v2] = calibrationPoints[i+1]; if (dip >= d1 && dip <= d2) return v1 + (v2 - v1) * (dip - d1) / (d2 - d1); } return 0; }
+
+    // ========== UNIQUE ID HELPER (fixes duplicate-ID / merged-party bug) ==========
+    // Previously IDs used only Date.now() (1ms resolution). When 2+ new parties/transactions
+    // were created in the same synchronous loop (e.g. saving Daily Sales with multiple new
+    // udhaar rows), they could get the EXACT SAME id -> two different parties silently shared
+    // one ledger, so editing/deleting one entry affected the other party too.
+    let __uidCounter = 0;
+    function uid(prefix){
+        __uidCounter = (__uidCounter + 1) % 1000000;
+        return prefix + Date.now().toString(36) + "_" + __uidCounter + "_" + Math.random().toString(36).slice(2,8);
+    }
+
+    // ========== LOCAL DATE HELPER (fixes UTC/IST midnight bug) ==========
+    // Old code used new Date().toISOString().slice(0,10), which returns the UTC date - a day
+    // BEHIND the real local date for users in India (IST = UTC+5:30) between 12:00 AM and 5:30 AM.
+    // That caused entries made in early morning hours to silently save under the wrong date.
+    function todayStr(){
+        let d = new Date();
+        let y = d.getFullYear();
+        let m = String(d.getMonth()+1).padStart(2,'0');
+        let day = String(d.getDate()).padStart(2,'0');
+        return `${y}-${m}-${day}`;
+    }
+
+    // ========== DATE NORMALIZATION (fixes date-range filters on browsers/webviews where
+    // <input type="date"> falls back to a plain text field, e.g. WhatsApp's in-app browser) ==========
+    // On a proper browser, type="date" inputs always give "YYYY-MM-DD" and this is a no-op.
+    // On a degraded webview, the user might type "07/07/2026" or "7-7-2026" freely, which broke
+    // every date-range filter/comparison in the app because they were compared as plain strings.
+    // This converts common alternate formats (DD/MM/YYYY, DD-MM-YYYY) to ISO before comparing.
+    function normalizeDateStr(s){
+        if(!s) return s;
+        s = String(s).trim();
+        if(/^\d{4}-\d{2}-\d{2}$/.test(s)) return s; // already ISO
+        let m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+        if(m){
+            let dd = m[1].padStart(2,'0'), mm = m[2].padStart(2,'0'), yyyy = m[3];
+            return `${yyyy}-${mm}-${dd}`; // assumes DD/MM/YYYY (Indian convention)
+        }
+        let m2 = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+        if(m2){
+            let yyyy = m2[1], mm = m2[2].padStart(2,'0'), dd = m2[3].padStart(2,'0');
+            return `${yyyy}-${mm}-${dd}`;
+        }
+        return s; // unrecognized format, leave as-is
+    }
+    // Detects whether the browser actually renders a real date-picker for type="date".
+    // If not (degraded webview), we warn the user once so they know to switch browsers.
+    function isNativeDateInputSupported(){
+        let i = document.createElement("input");
+        i.setAttribute("type","date");
+        i.value = "not-a-date";
+        return i.value !== "not-a-date";
+    }
+
+    // ========== MULTI-PAGE PDF GENERATOR (fixes broken/screenshot-like single-page PDFs) ==========
+    // Root cause of old bug: the export functions created an offscreen <div> and passed it
+    // straight to html2canvas WITHOUT ever appending it to document.body. html2canvas cannot
+    // reliably measure/render an element that isn't attached to the DOM, so output could come
+    // out cramped/mis-sized (looking like a phone screenshot) and always produced exactly one
+    // page no matter how much data there was. Fix: attach the div (off-screen, fixed A4 pixel
+    // width) before rendering, always remove it after, and split rows into multiple pages with
+    // a max-rows-per-page cap so long reports get proper multi-page PDFs.
+    const PDF_MAX_ROWS_PER_PAGE = 22;
+    async function generatePagedPDF({ title, subtitle, metaHtml, columns, rows, filename, footerNote, rowsPerPage }){
+        rowsPerPage = rowsPerPage || PDF_MAX_ROWS_PER_PAGE;
+        let { jsPDF } = window.jspdf;
+        let pdf = new jsPDF("p", "mm", "a4");
+        let pageWidthMM = 190;
+        let totalPages = Math.max(1, Math.ceil(rows.length / rowsPerPage));
+
+        for(let pageNum = 0; pageNum < totalPages; pageNum++){
+            let pageRows = rows.slice(pageNum*rowsPerPage, (pageNum+1)*rowsPerPage);
+            let div = document.createElement("div");
+            div.className = "pdf-export-container";
+            div.style.cssText = "padding:22px; background:white; font-family: system-ui, -apple-system, sans-serif; width:794px; position:fixed; left:-9999px; top:0; z-index:-1;";
+            document.body.appendChild(div);
+
+            let headHtml = columns.map(c=>`<th style="border:1px solid #64748b; padding:5px 6px; text-align:${c.align||'left'};">${c.label}</th>`).join("");
+            let bodyHtml = pageRows.length
+                ? pageRows.map(r => `<tr>${r.map((cell,i)=>`<td style="border:1px solid #64748b; padding:5px 7px; text-align:${columns[i].align||'left'};${columns[i].color?` color:${columns[i].color}; font-weight:600;`:''}">${cell}</td>`).join("")}</tr>`).join("")
+                : `<tr><td colspan="${columns.length}" style="text-align:center; padding:14px; color:#64748b;">No records found</td></tr>`;
+
+            div.innerHTML = `
+                <div style="text-align:center; margin-bottom:10px;">
+                    <h2 style="margin:0; color:#1e40af; font-size:1.3rem;">⛽ Petrol Pump Manager</h2>
+                    <h3 style="margin:3px 0 0; color:#334155;">${title}</h3>
+                    ${subtitle ? `<div style="font-size:0.75rem;color:#64748b; margin-top:2px;">${subtitle}</div>` : ''}
+                </div>
+                ${metaHtml ? `<div style="background:#f1f5f9; padding:8px 12px; border-radius:6px; margin-bottom:10px; font-size:0.82rem; display:flex; gap:16px; flex-wrap:wrap;">${metaHtml}</div>` : ''}
+                <table style="width:100%; border-collapse:collapse; font-size:0.78rem;">
+                    <thead><tr style="background:#dbeafe; color:#1e3a8a;">${headHtml}</tr></thead>
+                    <tbody>${bodyHtml}</tbody>
+                </table>
+                <div style="margin-top:14px; font-size:0.65rem; color:#94a3b8; text-align:right;">Page ${pageNum+1} of ${totalPages}</div>
+                ${footerNote ? `<div style="margin-top:4px; font-size:0.65rem; color:#64748b; text-align:center;">${footerNote}</div>` : ''}
+            `;
+
+            let canvas = await html2canvas(div, {scale: 2.2});
+            document.body.removeChild(div);
+            let imgH = (canvas.height * pageWidthMM) / canvas.width;
+            if(pageNum > 0) pdf.addPage();
+            pdf.addImage(canvas.toDataURL("image/png"), "PNG", 10, 8, pageWidthMM, imgH);
+        }
+        pdf.save(filename);
+    }
+
+    // ========== PERSISTENT STORAGE (NO DATA DELETION ON LOAD) ==========
+    const STORE_DAILY = "pump_daily_entries_fixed";
+    const STORE_PURCHASE = "pump_purchase_register_fixed";
+    const STORE_PARTIES = "pump_parties_fixed";
+    const STORE_TRANS = "pump_party_transactions_fixed";
+    const STORE_FIN_TRANS = "pump_financial_transactions_fixed";
+
+    function getDailyStore(){ return JSON.parse(localStorage.getItem(STORE_DAILY) || "{}"); }
+    function saveDailyStore(s){ localStorage.setItem(STORE_DAILY, JSON.stringify(s)); }
+    function getPurchase(){ return JSON.parse(localStorage.getItem(STORE_PURCHASE) || "[]"); }
+    function savePurchase(p){ localStorage.setItem(STORE_PURCHASE, JSON.stringify(p)); }
+    function getParties(){ return JSON.parse(localStorage.getItem(STORE_PARTIES) || "[]"); }
+    function saveParties(p){ localStorage.setItem(STORE_PARTIES, JSON.stringify(p)); }
+    function getTransactions(){ return JSON.parse(localStorage.getItem(STORE_TRANS) || "[]"); }
+    function saveTransactions(t){ localStorage.setItem(STORE_TRANS, JSON.stringify(t)); }
+    function getFinTransactions(){ return JSON.parse(localStorage.getItem(STORE_FIN_TRANS) || "[]"); }
+    function saveFinTransactions(t){ localStorage.setItem(STORE_FIN_TRANS, JSON.stringify(t)); }
+
+    // Helper
+    function addFinTransaction(date, type, description, amount, dailySource=null){
+        let fin = getFinTransactions();
+        let id = uid("f");
+        let newTrans = { id, date, type, description, amount: parseFloat(amount) };
+        if(dailySource) newTrans.dailySource = dailySource;
+        fin.push(newTrans);
+        saveFinTransactions(fin);
+        return newTrans;
+    }
+    function deleteFinTransaction(id){ saveFinTransactions(getFinTransactions().filter(t=>t.id!=id)); }
+    function deleteFinTransactionsBySource(src){ saveFinTransactions(getFinTransactions().filter(t=>t.dailySource!==src)); }
+
+    // ---------- Dynamic rows data ----------
+    let udhaarDiRows=[], udhaarJamaRows=[], extraRows=[], otherPaymentRows=[], expenseRows=[], cashDiyaRows=[], otherRows=[];
+
+    // Re-render dynamic tables (simplified but complete)
+    function refreshDynamicTables(){
+        const renderUdhaar = (tbodyId, rows) => {
+            let tbody = document.getElementById(tbodyId);
+            if(!tbody) return;
+            tbody.innerHTML = "";
+            rows.forEach((r,idx)=>{
+                let tr = document.createElement("tr");
+                let nameInput = document.createElement("input"); nameInput.type="text"; nameInput.className="table-input"; nameInput.value=r.name||"";
+                nameInput.onchange = ()=>{ r.name = nameInput.value; updateFinalTotals(); };
+                attachAutocomplete(nameInput, (sel)=>{ r.name=sel; nameInput.value=sel; updateFinalTotals(); });
+                let tdName = document.createElement("td"); tdName.appendChild(nameInput);
+                let infoInput = document.createElement("input"); infoInput.type="text"; infoInput.className="table-input"; infoInput.value=r.info||"";
+                infoInput.onchange = ()=>{ r.info = infoInput.value; updateFinalTotals(); };
+                let tdInfo = document.createElement("td"); tdInfo.appendChild(infoInput);
+                let amtInput = document.createElement("input"); amtInput.type="number"; amtInput.className="table-input"; amtInput.value=r.amount||0;
+                amtInput.onchange = ()=>{ r.amount = amtInput.value; updateFinalTotals(); };
+                let tdAmt = document.createElement("td"); tdAmt.appendChild(amtInput);
+                let delBtn = document.createElement("i"); delBtn.className="fas fa-trash-alt delete-row-btn"; delBtn.title="Delete row";
+                delBtn.onclick = ()=>{ let hasData = (r.name && r.name.trim()) || (r.amount && parseFloat(r.amount)>0); if(hasData && !confirm("Remove this row?")) return; rows.splice(idx,1); refreshDynamicTables(); updateFinalTotals(); };
+                let tdDel = document.createElement("td"); tdDel.appendChild(delBtn);
+                tr.append(tdName, tdInfo, tdAmt, tdDel);
+                tbody.appendChild(tr);
+            });
+        };
+        const renderSimple = (tbodyId, rows, infoField, amountField) => {
+            let tbody = document.getElementById(tbodyId);
+            if(!tbody) return;
+            tbody.innerHTML = "";
+            rows.forEach((row, idx) => {
+                let tr = document.createElement("tr");
+                let infoInput = document.createElement("input");
+                infoInput.type="text"; infoInput.className="table-input"; infoInput.value=row[infoField]||'';
+                infoInput.onchange = () => { row[infoField] = infoInput.value; updateFinalTotals(); };
+                let tdInfo = document.createElement("td"); tdInfo.appendChild(infoInput);
+                let amtInput = document.createElement("input");
+                amtInput.type="number"; amtInput.className="table-input"; amtInput.step="0.01"; amtInput.value = row[amountField]||0 ;
+                amtInput.onchange = () => { row[amountField] = amtInput.value; updateFinalTotals(); };
+                let tdAmt = document.createElement("td"); tdAmt.appendChild(amtInput);
+                let delBtn = document.createElement("i"); delBtn.className="fas fa-trash-alt delete-row-btn"; delBtn.title="Delete row";
+                delBtn.onclick = () => { let hasData = (row[infoField] && String(row[infoField]).trim()) || (row[amountField] && parseFloat(row[amountField])>0); if(hasData && !confirm("Remove this row?")) return; rows.splice(idx,1); refreshDynamicTables(); updateFinalTotals(); };
+                let tdDel = document.createElement("td"); tdDel.appendChild(delBtn);
+                tr.append(tdInfo, tdAmt, tdDel);
+                tbody.appendChild(tr);
+            });
+        };
+        renderUdhaar("dailyUdhaarDiBody", udhaarDiRows);
+        renderUdhaar("dailyUdhaarJamaBody", udhaarJamaRows);
+        renderSimple("dailyExtraBody", extraRows, "info", "amount");
+        renderSimple("dailyOtherPaymentBody", otherPaymentRows, "info", "amount");
+        renderSimple("dailyExpenseBody", expenseRows, "info", "amount");
+        renderSimple("dailyCashDiyaBody", cashDiyaRows, "info", "amount");
+        renderSimple("dailyOtherBody", otherRows, "method", "amount");
+        updateFinalTotals();
+    }
+
+    function attachAutocomplete(input, callback){
+        if(!input) return;
+        let current;
+        // FIX: previously a NEW document-level "click outside" listener was registered on
+        // every single keystroke and never cleaned up until it eventually fired once. Typing
+        // a whole name could leave many stray listeners alive at once. Now we register exactly
+        // ONE outside-click handler per input, reused for every dropdown it shows.
+        let outsideClickHandler = (e)=>{ if(e.target!==input && current){ current.remove(); current=null; } };
+        document.addEventListener("click", outsideClickHandler);
+        input.addEventListener("input", function(){
+            if(current) current.remove();
+            let val = this.value.toLowerCase();
+            if(!val) return;
+            let parties = getParties().filter(p=>p.status!=="closed").filter(p=>p.name.toLowerCase().includes(val)).slice(0,8);
+            if(!parties.length) return;
+            let div = document.createElement("div"); div.className="autocomplete-items";
+            let rect = this.getBoundingClientRect();
+            div.style.position="absolute"; div.style.left=rect.left+window.scrollX+"px"; div.style.top=rect.bottom+window.scrollY+"px"; div.style.width=rect.width+"px";
+            parties.forEach(p=>{
+                let item = document.createElement("div"); item.textContent=p.name; item.classList.add("autocomplete-item");
+                item.onclick = ()=>{ input.value=p.name; if(callback) callback(p.name); div.remove(); current=null; };
+                div.appendChild(item);
+            });
+            document.body.appendChild(div); current=div;
+        });
+    }
+
+    function updateFinalTotals(){
+        let sale = parseFloat(document.getElementById("netSaleAmountDaily").innerText.replace('₹',''))||0;
+        let jama = udhaarJamaRows.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        let extra = extraRows.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        let otherPay = otherPaymentRows.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        let di = udhaarDiRows.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        let exp = expenseRows.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        let cashDi = cashDiyaRows.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        let cash = parseFloat(document.getElementById("cashDaily").value)||0;
+        let upi = parseFloat(document.getElementById("upiDaily").value)||0;
+        let otherM = otherRows.reduce((s,r)=>s+(parseFloat(r.amount)||0),0);
+        let inc = sale + jama + extra + otherPay;
+        let out = di + exp + cashDi + cash + upi + otherM;
+        document.getElementById("totalIncomeDaily").innerHTML = `₹${inc.toFixed(2)}`;
+        document.getElementById("totalOutDaily").innerHTML = `₹${out.toFixed(2)}`;
+        document.getElementById("netBalanceDaily").innerHTML = `₹${(inc-out).toFixed(2)}`;
+    }
+
+    // Nozzle & calculations
+    function initNozzleTables(){
+        let petrolBody = document.getElementById("petrolTbody"), dieselBody = document.getElementById("dieselTbody");
+        petrolBody.innerHTML=""; dieselBody.innerHTML="";
+        for(let i=1;i<=4;i++){
+            petrolBody.insertAdjacentHTML("beforeend", `<tr><td>P${i}</td><td><input type="number" step="0.01" class="table-input endP" data-p="${i}"></td><td><input type="number" step="0.01" class="table-input startP" data-p="${i}"></td><td class="netP${i}">0</td></tr>`);
+            dieselBody.insertAdjacentHTML("beforeend", `<tr><td>D${i}</td><td><input type="number" step="0.01" class="table-input endD" data-d="${i}"></td><td><input type="number" step="0.01" class="table-input startD" data-d="${i}"></td><td class="netD${i}">0</td></tr>`);
+        }
+        document.querySelectorAll('.endP, .startP, .endD, .startD').forEach(el => el.addEventListener('input', recalcNozzles));
+    }
+    function recalcNozzles(){
+        let pTotal=0,dTotal=0;
+        for(let i=1;i<=4;i++){
+            let end=parseFloat(document.querySelector(`.endP[data-p="${i}"]`)?.value)||0, start=parseFloat(document.querySelector(`.startP[data-p="${i}"]`)?.value)||0;
+            let net=Math.max(0,end-start); document.querySelector(`.netP${i}`).innerText=net.toFixed(2); pTotal+=net;
+            let endD=parseFloat(document.querySelector(`.endD[data-d="${i}"]`)?.value)||0, startD=parseFloat(document.querySelector(`.startD[data-d="${i}"]`)?.value)||0;
+            let netD=Math.max(0,endD-startD); document.querySelector(`.netD${i}`).innerText=netD.toFixed(2); dTotal+=netD;
+        }
+        document.getElementById("totalPetrolRaw").innerText=pTotal.toFixed(2);
+        document.getElementById("totalDieselRaw").innerText=dTotal.toFixed(2);
+        updateSaleDetails();
+    }
+    function updateSaleDetails(){
+        let pGross=parseFloat(document.getElementById("totalPetrolRaw").innerText)||0, dGross=parseFloat(document.getElementById("totalDieselRaw").innerText)||0;
+        let pTest=parseFloat(document.getElementById("petrolTestLtr").value)||0, dTest=parseFloat(document.getElementById("dieselTestLtr").value)||0;
+        let netP=Math.max(0,pGross-pTest), netD=Math.max(0,dGross-dTest);
+        document.getElementById("netPetrolLtr").innerText=netP.toFixed(2); document.getElementById("netDieselLtr").innerText=netD.toFixed(2);
+        let pPrice=parseFloat(document.getElementById("petrolPrice").value)||0, dPrice=parseFloat(document.getElementById("dieselPrice").value)||0;
+        let pAmt=netP*pPrice, dAmt=netD*dPrice;
+        document.getElementById("petrolAmount").innerHTML=`₹${pAmt.toFixed(2)}`;
+        document.getElementById("dieselAmount").innerHTML=`₹${dAmt.toFixed(2)}`;
+        document.getElementById("netSaleAmountDaily").innerHTML=`₹${(pAmt+dAmt).toFixed(2)}`;
+        updateFinalTotals();
+    }
+    function updateTankVolumes(){
+        let d1=parseFloat(document.getElementById("tank1Dip").value)||0, v1=getVolumeFromDip(d1); document.getElementById("tank1Vol").innerText=v1.toFixed(2);
+        let c1=parseFloat(document.getElementById("tank1Closing").value)||0; document.getElementById("tank1Var").innerText=(v1-c1).toFixed(2);
+        let d2=parseFloat(document.getElementById("tank2Dip").value)||0, v2=getVolumeFromDip(d2); document.getElementById("tank2Vol").innerText=v2.toFixed(2);
+        let c2=parseFloat(document.getElementById("tank2Closing").value)||0; document.getElementById("tank2Var").innerText=(v2-c2).toFixed(2);
+    }
+
+    // Save / Load Daily
+    function saveCurrentDaily(){
+        let date = document.getElementById("dailyDate").value;
+        if(!date){ alert("Select date"); return; }
+        let data = {
+            date, petrolTest:document.getElementById("petrolTestLtr").value, dieselTest:document.getElementById("dieselTestLtr").value,
+            petrolPrice:document.getElementById("petrolPrice").value, dieselPrice:document.getElementById("dieselPrice").value,
+            udhaarDi:udhaarDiRows, udhaarJama:udhaarJamaRows, extra:extraRows, otherPayment:otherPaymentRows,
+            expenses:expenseRows, cashDiya:cashDiyaRows, otherPayments:otherRows,
+            cash:document.getElementById("cashDaily").value, upi:document.getElementById("upiDaily").value,
+            tank1:{dip:document.getElementById("tank1Dip").value, closing:document.getElementById("tank1Closing").value},
+            tank2:{dip:document.getElementById("tank2Dip").value, closing:document.getElementById("tank2Closing").value},
+            nozzleReadings: (()=>{ let nr={}; for(let i=1;i<=4;i++){ nr[`p${i}`]={end:document.querySelector(`.endP[data-p="${i}"]`).value, start:document.querySelector(`.startP[data-p="${i}"]`).value}; nr[`d${i}`]={end:document.querySelector(`.endD[data-d="${i}"]`).value, start:document.querySelector(`.startD[data-d="${i}"]`).value}; } return nr; })()
+        };
+        let store = getDailyStore(); store[date] = data; saveDailyStore(store);
+        // Party transactions
+        let allTrans = getTransactions().filter(t=>!(t.source && t.source===`daily_${date}`));
+        udhaarDiRows.forEach(r=>{ if(r.name && r.amount){ let parties=getParties(); let p=parties.find(p=>p.name.toLowerCase()===r.name.toLowerCase()); if(!p){ p={id:uid("p"), name:r.name, isFixed:false, status:"active"}; parties.push(p); saveParties(parties); } allTrans.push({id:uid("t"), partyId:p.id, date, type:"udhaar_di", amount:parseFloat(r.amount), description:r.info||"", source:`daily_${date}`}); } });
+        udhaarJamaRows.forEach(r=>{ if(r.name && r.amount){ let parties=getParties(); let p=parties.find(p=>p.name.toLowerCase()===r.name.toLowerCase()); if(!p){ p={id:uid("p"), name:r.name, isFixed:false, status:"active"}; parties.push(p); saveParties(parties); } allTrans.push({id:uid("t"), partyId:p.id, date, type:"udhaar_jama", amount:parseFloat(r.amount), description:r.info||"", source:`daily_${date}`}); } });
+        saveTransactions(allTrans);
+        deleteFinTransactionsBySource(date);
+        extraRows.forEach(r=>{ if(r.amount) addFinTransaction(date,"extra",r.info,r.amount,date); });
+        otherPaymentRows.forEach(r=>{ if(r.amount) addFinTransaction(date,"otherPayment",r.info,r.amount,date); });
+        expenseRows.forEach(r=>{ if(r.amount) addFinTransaction(date,"expense",r.info,r.amount,date); });
+        cashDiyaRows.forEach(r=>{ if(r.amount) addFinTransaction(date,"cashDiya",r.info,r.amount,date); });
+        alert("Saved successfully!");
+        renderTransactionsLedger(); renderPartyLedger();
+    }
+    function loadDailyByDate(date){
+        let store=getDailyStore(); let data=store[date];
+        if(!data){ clearDailyForm(); return; }
+        document.getElementById("petrolTestLtr").value=data.petrolTest||0; document.getElementById("dieselTestLtr").value=data.dieselTest||0;
+        document.getElementById("petrolPrice").value=data.petrolPrice||105.5; document.getElementById("dieselPrice").value=data.dieselPrice||92.8;
+        document.getElementById("cashDaily").value=data.cash||0; document.getElementById("upiDaily").value=data.upi||0;
+        document.getElementById("tank1Dip").value=data.tank1?.dip||""; document.getElementById("tank1Closing").value=data.tank1?.closing||"";
+        document.getElementById("tank2Dip").value=data.tank2?.dip||""; document.getElementById("tank2Closing").value=data.tank2?.closing||"";
+        udhaarDiRows=data.udhaarDi||[]; udhaarJamaRows=data.udhaarJama||[]; extraRows=data.extra||[]; otherPaymentRows=data.otherPayment||[];
+        expenseRows=data.expenses||[]; cashDiyaRows=data.cashDiya||[]; otherRows=data.otherPayments||[];
+        if(data.nozzleReadings) for(let i=1;i<=4;i++){ let p=data.nozzleReadings[`p${i}`]; if(p){ document.querySelector(`.endP[data-p="${i}"]`).value=p.end; document.querySelector(`.startP[data-p="${i}"]`).value=p.start; } let d=data.nozzleReadings[`d${i}`]; if(d){ document.querySelector(`.endD[data-d="${i}"]`).value=d.end; document.querySelector(`.startD[data-d="${i}"]`).value=d.start; } }
+        refreshDynamicTables(); recalcNozzles(); updateTankVolumes();
+    }
+    function clearDailyForm(){
+        for(let i=1;i<=4;i++){ document.querySelector(`.endP[data-p="${i}"]`).value=""; document.querySelector(`.startP[data-p="${i}"]`).value=""; document.querySelector(`.endD[data-d="${i}"]`).value=""; document.querySelector(`.startD[data-d="${i}"]`).value=""; }
+        udhaarDiRows=[]; udhaarJamaRows=[]; extraRows=[]; otherPaymentRows=[]; expenseRows=[]; cashDiyaRows=[]; otherRows=[];
+        refreshDynamicTables(); recalcNozzles(); updateTankVolumes();
+    }
+
+    // Purchase register
+    function renderPurchases(){
+        let list = getPurchase();
+        let tbody = document.getElementById("purchaseTbody");
+        tbody.innerHTML = "";
+        list.forEach((p,idx)=>{
+            let displayLiters, displayAmount;
+            if(p.product === "Mixed Load"){
+                displayLiters = `P: ${p.petrolLiters.toFixed(2)}L | D: ${p.dieselLiters.toFixed(2)}L`;
+                displayAmount = `P: ₹${p.petrolAmount.toFixed(2)} | D: ₹${p.dieselAmount.toFixed(2)} | Total: ₹${p.totalAmount.toFixed(2)}`;
+            } else {
+                displayLiters = p.liters ? String(p.liters) : '-';
+                displayAmount = `₹${p.totalAmount.toFixed(2)}`;
+            }
+            tbody.insertAdjacentHTML("beforeend", `<tr><td>${escapeHtml(p.date)}</td><td>${escapeHtml(p.invoiceNo)}</td><td>${escapeHtml(p.vehicleNo||'')}</td><td>${escapeHtml(p.supplier||'')}</td><td>${escapeHtml(p.product)}</td><td>${displayLiters}</td><td>${displayAmount}</td><td><button class="delPurchase text-red-500" data-idx="${idx}">Delete</button></td></tr>`);
+        });
+        document.querySelectorAll(".delPurchase").forEach(btn=>btn.onclick=()=>{ if(!confirm("Delete this purchase entry?")) return; let pur=getPurchase(); pur.splice(parseInt(btn.dataset.idx),1); savePurchase(pur); renderPurchases(); });
+    }
+
+    // Tanker Modal (Unified)
+    function showTankerModal(product){
+        let modalDiv = document.createElement("div"); modalDiv.className = "modal";
+        modalDiv.innerHTML = `<div class="modal-content"><h3>➕ Add ${product} Tanker</h3><input type="text" id="tankerInvoice" placeholder="Invoice No." class="table-input"><input type="text" id="tankerVehicle" placeholder="Vehicle No." class="table-input"><input type="text" id="tankerSupplier" placeholder="Supplier (Optional)" class="table-input"><input type="number" id="tankerLiters" placeholder="Liters" class="table-input"><input type="number" id="tankerAmount" placeholder="Total Amount (₹)" class="table-input"><div class="flex justify-end gap-2 mt-3"><button id="modalCancel" class="bg-gray-400 text-white px-3 py-1 rounded">Cancel</button><button id="modalConfirm" class="bg-green-600 text-white px-3 py-1 rounded">Record</button></div></div>`;
+        document.body.appendChild(modalDiv);
+        document.getElementById("modalCancel").onclick = ()=>modalDiv.remove();
+        document.getElementById("modalConfirm").onclick = ()=>{
+            let inv = document.getElementById("tankerInvoice").value.trim();
+            let veh = document.getElementById("tankerVehicle").value.trim();
+            let sup = document.getElementById("tankerSupplier").value.trim();
+            let lit = parseFloat(document.getElementById("tankerLiters").value);
+            let amt = parseFloat(document.getElementById("tankerAmount").value);
+            if(!inv || !lit || !amt){ alert("Invoice, Liters and Amount required"); return; }
+            let purchases = getPurchase();
+            let date = document.getElementById("dailyDate").value || todayStr();
+            purchases.push({ date, invoiceNo: inv, vehicleNo: veh, supplier: sup, product, liters: lit, totalAmount: amt });
+            savePurchase(purchases);
+            renderPurchases();
+            modalDiv.remove();
+            alert("Tanker recorded");
+        };
+    }
+    function showMixedTankerModal(){
+        let modalDiv = document.createElement("div"); modalDiv.className = "modal";
+        modalDiv.innerHTML = `<div class="modal-content"><h3>🔄 Mixed Tanker Entry</h3><input type="text" id="mixInvoice" placeholder="Invoice No." class="table-input"><input type="text" id="mixVehicle" placeholder="Vehicle No." class="table-input"><div class="grid grid-cols-2 gap-2"><input type="number" id="mixPetrolLtr" placeholder="Petrol Liters" class="table-input" step="0.01"><input type="number" id="mixDieselLtr" placeholder="Diesel Liters" class="table-input" step="0.01"></div><div class="grid grid-cols-2 gap-2"><input type="number" id="mixPetrolAmt" placeholder="Petrol Amount (₹)" class="table-input" step="0.01"><input type="number" id="mixDieselAmt" placeholder="Diesel Amount (₹)" class="table-input" step="0.01"></div><input type="number" id="mixTotalAmt" placeholder="Total Amount (₹)" class="table-input" step="0.01" readonly style="background:#f0fdf4; font-weight:700; border:2px solid #22c55e;" value="0.00"><div class="flex justify-end gap-2 mt-3"><button id="modalCancel" class="bg-gray-400 text-white px-3 py-1 rounded">Cancel</button><button id="modalConfirm" class="bg-green-600 text-white px-3 py-1 rounded">Record</button></div></div>`;
+        document.body.appendChild(modalDiv);
+        
+        let petrolAmtInput = document.getElementById("mixPetrolAmt");
+        let dieselAmtInput = document.getElementById("mixDieselAmt");
+        let totalAmtInput = document.getElementById("mixTotalAmt");
+        
+        function updateTotal(){
+            let petrolAmt = parseFloat(petrolAmtInput.value) || 0;
+            let dieselAmt = parseFloat(dieselAmtInput.value) || 0;
+            let total = petrolAmt + dieselAmt;
+            totalAmtInput.value = total.toFixed(2);
+        }
+        
+        petrolAmtInput.addEventListener("input", updateTotal);
+        dieselAmtInput.addEventListener("input", updateTotal);
+        
+        document.getElementById("modalCancel").onclick = ()=>modalDiv.remove();
+        document.getElementById("modalConfirm").onclick = ()=>{
+            let inv = document.getElementById("mixInvoice").value.trim();
+            let veh = document.getElementById("mixVehicle").value.trim();
+            let petrolL = parseFloat(document.getElementById("mixPetrolLtr").value);
+            let dieselL = parseFloat(document.getElementById("mixDieselLtr").value);
+            let petrolA = parseFloat(document.getElementById("mixPetrolAmt").value);
+            let dieselA = parseFloat(document.getElementById("mixDieselAmt").value);
+            
+            if(!inv || !petrolL || !dieselL || !petrolA || !dieselA){ alert("All fields required"); return; }
+            
+            let totalA = petrolA + dieselA;
+            
+            let purchases = getPurchase();
+            let date = document.getElementById("dailyDate").value || todayStr();
+            purchases.push({ 
+                date, 
+                invoiceNo: inv, 
+                vehicleNo: veh, 
+                supplier: "IoCL",
+                product: "Mixed Load", 
+                petrolLiters: petrolL,
+                dieselLiters: dieselL,
+                petrolAmount: petrolA,
+                dieselAmount: dieselA,
+                totalAmount: totalA
+            });
+            savePurchase(purchases);
+            renderPurchases();
+            modalDiv.remove();
+            alert("Mixed tanker recorded");
+        };
+    }
+
+    // Transactions Ledger
+    function renderTransactionsLedger(){
+        let start=normalizeDateStr(document.getElementById("transStartDate").value), end=normalizeDateStr(document.getElementById("transEndDate").value), type=document.getElementById("transTypeFilter").value;
+        let filtered = getFinTransactions().filter(t=>{ if(start && t.date<start) return false; if(end && t.date>end) return false; if(type!=="all" && t.type!==type) return false; return true; }).sort((a,b)=>new Date(b.date)-new Date(a.date));
+        let tbody=document.getElementById("transactionsTbody"); tbody.innerHTML="";
+        filtered.forEach(t=>{
+            let typeName={expense:"Expense", extra:"Extra Payment", otherPayment:"Other Payment", cashDiya:"Cash Diya"}[t.type]||t.type;
+            tbody.insertAdjacentHTML("beforeend", `<tr><td>${t.date}</td><td>${typeName}</td><td>${escapeHtml(t.description||'')}</td><td>₹${t.amount.toFixed(2)}</td><td><button class="editTransBtn text-blue-600 mr-2" data-id="${t.id}"><i class="fas fa-edit"></i></button><button class="deleteTransBtn text-red-600" data-id="${t.id}"><i class="fas fa-trash-alt"></i></button></td></tr>`);
+        });
+        document.querySelectorAll(".editTransBtn").forEach(btn=>btn.onclick=()=>{ let id=btn.dataset.id, tr=getFinTransactions().find(t=>t.id==id); if(tr){ let nd=prompt("Date",tr.date), ndesc=prompt("Description",tr.description), namt=parseFloat(prompt("Amount",tr.amount)); if(nd&&ndesc&&!isNaN(namt)){ let fin=getFinTransactions(); let idx=fin.findIndex(t=>t.id==id); fin[idx]={...fin[idx], date:nd, description:ndesc, amount:namt}; saveFinTransactions(fin); renderTransactionsLedger(); } } });
+        document.querySelectorAll(".deleteTransBtn").forEach(btn=>btn.onclick=()=>{ if(confirm("Delete?")){ deleteFinTransaction(btn.dataset.id); renderTransactionsLedger(); } });
+    }
+    async function exportTransactionsPDF(){
+        let start = normalizeDateStr(document.getElementById("transStartDate").value);
+        let end = normalizeDateStr(document.getElementById("transEndDate").value);
+        let type = document.getElementById("transTypeFilter").value;
+        let filtered = getFinTransactions().filter(t => {
+            if (start && t.date < start) return false;
+            if (end && t.date > end) return false;
+            if (type !== "all" && t.type !== type) return false;
+            return true;
+        }).sort((a,b) => new Date(b.date) - new Date(a.date));
+
+        let typeLabel = {expense:"Expenses", extra:"Extra Payment", otherPayment:"Other Payment", cashDiya:"Cash Diya"}[type] || "All Types";
+        let total = filtered.reduce((sum, t) => sum + (parseFloat(t.amount) || 0), 0);
+
+        let rows = filtered.map(t => {
+            let typeName = {expense:"Expense", extra:"Extra Payment", otherPayment:"Other Payment", cashDiya:"Cash Diya"}[t.type] || t.type;
+            return [ t.date, typeName, escapeHtml(t.description || "-"), `₹${(parseFloat(t.amount)||0).toFixed(2)}` ];
+        });
+
+        await generatePagedPDF({
+            title: "Financial Transactions Report",
+            metaHtml: `<div><strong>Period:</strong> ${start || "All"} → ${end || "All"}</div><div><strong>Type:</strong> ${typeLabel}</div><div><strong>Total Records:</strong> ${filtered.length}</div><div style="margin-left:auto; font-weight:700; color:#b91c1c;">Total Amount: ₹${total.toFixed(2)}</div>`,
+            columns: [ {label:"Date", align:"left"}, {label:"Type", align:"left"}, {label:"Description", align:"left"}, {label:"Amount (₹)", align:"right"} ],
+            rows,
+            filename: `Transactions_${start || "All"}_to_${end || "All"}.pdf`,
+            footerNote: `Generated on ${new Date().toLocaleDateString('en-IN')} • Petrol Pump Manager (Local Data)`
+        });
+    }
+
+    // Udhaar Report (FIFO full implementation)
+    // FIFO matching engine, shared by screen report + PDF export.
+    // FIX: previously, bills (udhaar_di) dated BEFORE the selected start date were skipped
+    // with `continue` before FIFO matching ran for them - meaning their jama (payment)
+    // consumption never happened, so old already-paid bills' payments were wrongly left
+    // "available" and got applied to newer bills inside the selected range, showing
+    // incorrect Paid/Due status. Fix: run FIFO matching across the party's FULL history in
+    // date order first, and only FILTER which bills to display by date range afterward.
+    function computeUdhaarFIFO(start, end, filter){
+        let transactions = getTransactions();
+        let parties = getParties();
+        let partyMap = new Map(parties.map(p=>[p.id, p.name]));
+        let diMap = new Map(), jamaMap = new Map();
+        transactions.forEach(t=>{
+            if(t.type==='udhaar_di'){ if(!diMap.has(t.partyId)) diMap.set(t.partyId,[]); diMap.get(t.partyId).push({id:t.id, date:t.date, amount:parseFloat(t.amount)||0}); }
+            if(t.type==='udhaar_jama'){ if(!jamaMap.has(t.partyId)) jamaMap.set(t.partyId,[]); jamaMap.get(t.partyId).push({date:t.date, amount:parseFloat(t.amount)||0}); }
+        });
+        for(let arr of diMap.values()) arr.sort((a,b)=>new Date(a.date)-new Date(b.date));
+        for(let arr of jamaMap.values()) arr.sort((a,b)=>new Date(a.date)-new Date(b.date));
+        let results = [];
+        for(let [pid, diList] of diMap.entries()){
+            let jamaList = jamaMap.get(pid) || [];
+            let jIdx=0, used=new Map();
+            for(let di of diList){
+                // FIFO matching runs for EVERY bill regardless of date range, so older bills
+                // correctly consume their payments before newer ones get a chance.
+                let rem = di.amount, paid=0, lastPay=null;
+                while(jIdx < jamaList.length && rem>0.01){
+                    let j = jamaList[jIdx];
+                    let usedAmt = used.get(jIdx) || 0;
+                    let avail = j.amount - usedAmt;
+                    if(avail<=0.01){ jIdx++; continue; }
+                    let apply = Math.min(rem, avail);
+                    rem -= apply; paid += apply;
+                    used.set(jIdx, usedAmt+apply);
+                    lastPay = j.date;
+                    if(apply >= avail-0.01) jIdx++;
+                }
+                // Only decide whether to DISPLAY this bill after matching is done.
+                if(di.date < start || di.date > end) continue;
+                let isPaid = rem <= 0.01;
+                if((filter==='clear' && !isPaid) || (filter==='due' && isPaid)) continue;
+                results.push({ party: partyMap.get(pid)||"Unknown", date: di.date, billAmount: di.amount, paid, lastPay: lastPay||"-", remaining: rem, status: isPaid?"Paid":"Due" });
+            }
+        }
+        results.sort((a,b)=>new Date(a.date)-new Date(b.date));
+        let totalOut = results.reduce((s,r)=>s + (r.remaining>0?r.remaining:0), 0);
+        return { results, totalOut };
+    }
+
+    function renderUdhaarReport(){
+        let start = normalizeDateStr(document.getElementById("udhaarStartDate").value);
+        let end = normalizeDateStr(document.getElementById("udhaarEndDate").value);
+        let filter = document.getElementById("udhaarStatusFilter").value;
+        if(!start || !end){ alert("Select date range"); return; }
+        let { results, totalOut } = computeUdhaarFIFO(start, end, filter);
+        let tbody = document.getElementById("udhaarReportTbody");
+        tbody.innerHTML = "";
+        results.forEach(r=>{
+            let cls = r.remaining<=0.01 ? "udhaar-paid-row" : "udhaar-pending-row";
+            let statusIcon = r.status === "Paid" ? "✅ Paid" : "⚠️ Due";
+            tbody.insertAdjacentHTML("beforeend", `<tr class="${cls}"><td>${escapeHtml(r.party)}</td><td>${r.date}</td><td class="text-right">₹${r.billAmount.toFixed(2)}</td><td class="text-right">₹${r.paid.toFixed(2)}</td><td>${r.lastPay}</td><td class="text-right font-bold">₹${r.remaining.toFixed(2)}</td><td>${statusIcon}</td></tr>`);
+        });
+        if(results.length===0) tbody.innerHTML = '<tr><td colspan="7">No records</td></tr>';
+        document.getElementById("udhaarTotalOutstanding").innerHTML = `💰 Total Outstanding: ₹${totalOut.toFixed(2)}`;
+    }
+    async function downloadUdhaarPDF(){
+        let start = normalizeDateStr(document.getElementById("udhaarStartDate").value);
+        let end = normalizeDateStr(document.getElementById("udhaarEndDate").value);
+        if(!start || !end){ alert("Select dates"); return; }
+        let filter = document.getElementById("udhaarStatusFilter").value;
+        let { results, totalOut } = computeUdhaarFIFO(start, end, filter);
+
+        let rows = results.map(r => {
+            let color = r.status === "Paid" ? "#166534" : "#b91c1c";
+            return [ escapeHtml(r.party), r.date, `₹${r.billAmount.toFixed(2)}`, `₹${r.paid.toFixed(2)}`, r.lastPay, `₹${r.remaining.toFixed(2)}`, r.status ].map((cell,i)=> i>=5 ? `<span style="color:${color};font-weight:700;">${cell}</span>` : cell);
+        });
+
+        await generatePagedPDF({
+            title: "Udhaar Report (FIFO)",
+            metaHtml: `<div><strong>From:</strong> ${start}</div><div><strong>To:</strong> ${end}</div><div><strong>Filter:</strong> ${filter === "all" ? "All Bills" : filter === "clear" ? "Clear Bills" : "Due Bills"}</div><div style="margin-left:auto; font-weight:700; color:#b91c1c;">Total Outstanding: ₹${totalOut.toFixed(2)}</div>`,
+            columns: [
+                {label:"Party", align:"left"}, {label:"Bill Date", align:"left"}, {label:"Bill Amt", align:"right"},
+                {label:"Paid", align:"right"}, {label:"Last Payment", align:"left"}, {label:"Remaining", align:"right"}, {label:"Status", align:"left"}
+            ],
+            rows,
+            filename: `Udhaar_Report_${start}_to_${end}.pdf`,
+            footerNote: `FIFO matching applied • Generated on ${new Date().toLocaleDateString('en-IN')}`
+        });
+    }
+
+    function getPartyOutstanding(partyId){
+        let txns = getTransactions().filter(t => t.partyId === partyId);
+        let di = txns.filter(t=>t.type==='udhaar_di').reduce((s,t)=>s + (parseFloat(t.amount)||0), 0);
+        let jama = txns.filter(t=>t.type==='udhaar_jama').reduce((s,t)=>s + (parseFloat(t.amount)||0), 0);
+        return di - jama; // positive = party owes you
+    }
+
+    function renderPartyLedger(){
+        let parties = getParties();
+        let search = document.getElementById("partySearch").value.toLowerCase();
+        let showClosed = document.getElementById("showClosedCheckbox").checked;
+        let filterType = document.getElementById("partyLedgerFilter").value || "default";
+        let container = document.getElementById("partyLedgerContainer");
+        container.innerHTML = "";
+        let filtered = parties.filter(p => (showClosed || p.status !== "closed") && (!search || p.name.toLowerCase().includes(search)));
+        
+        // Apply sorting based on filter
+        if(filterType === "by_transactions"){
+            filtered.sort((a,b) => {
+                let txnsA = getTransactions().filter(t=>t.partyId===a.id).length;
+                let txnsB = getTransactions().filter(t=>t.partyId===b.id).length;
+                return txnsB - txnsA; // High to low
+            });
+        } else if(filterType === "by_due_amount"){
+            filtered.sort((a,b) => {
+                let dueA = getPartyOutstanding(a.id);
+                let dueB = getPartyOutstanding(b.id);
+                return dueB - dueA; // High to low
+            });
+        } else if(filterType === "by_name"){
+            filtered.sort((a,b) => a.name.localeCompare(b.name)); // A-Z
+        }
+        
+        if(filtered.length === 0){
+            container.innerHTML = `<div class="p-4 text-center text-gray-500">No parties found. Use "+ New Party" button above.</div>`;
+            return;
+        }
+        let html = `<div class="overflow-x-auto"><table class="w-full border text-sm"><thead class="bg-gray-100"><tr>
+            <th class="p-2 text-center" style="width:40px;">#</th>
+            <th class="p-2 text-left">Party Name</th>
+            <th class="p-2 text-right">Outstanding (₹)</th>
+            <th class="p-2 text-center"># Txns</th>
+            <th class="p-2 text-center">Status</th>
+            <th class="p-2 text-center w-64">Actions</th>
+        </tr></thead><tbody>`;
+        filtered.forEach((party, idx) => {
+            let outstanding = getPartyOutstanding(party.id);
+            let txnsCount = getTransactions().filter(t=>t.partyId===party.id).length;
+            let statusBadge = party.status==='closed' ? '<span class="closed-badge">Closed</span>' : (party.isFixed ? '<span class="fixed-badge">Fixed</span>' : '<span class="text-green-600 text-xs px-1.5 py-0.5 bg-green-100 rounded">Active</span>');
+            let oweClass = outstanding > 0 ? 'text-red-600 font-bold' : (outstanding < 0 ? 'text-emerald-600' : 'text-gray-500');
+            let clearBtn = Math.abs(outstanding) <= 50 && outstanding !== 0 ? `<button onclick="clearPartyBalance('${party.id}')" class="bg-purple-500 hover:bg-purple-600 text-white text-xs px-2 py-1 rounded mr-1" title="Mark Bill as Clear (₹50 limit)">✓ Clear Bill</button>` : '';
+            html += `<tr class="border-b hover:bg-gray-50">
+                <td class="p-2 text-center font-bold text-gray-600">${idx + 1}</td>
+                <td class="p-2 font-medium">${escapeHtml(party.name)}</td>
+                <td class="p-2 text-right ${oweClass}">₹${outstanding.toFixed(2)}</td>
+                <td class="p-2 text-center">${txnsCount}</td>
+                <td class="p-2 text-center">${statusBadge}</td>
+                <td class="p-2 text-center">
+                    <button onclick="showPartyDetailModal('${party.id}')" class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs px-3 py-1 rounded mr-1">View / Manage</button>
+                    <button onclick="editPartyName('${party.id}')" class="bg-blue-500 hover:bg-blue-600 text-white text-xs px-2 py-1 rounded mr-1" title="Edit Name"><i class="fas fa-edit"></i></button>
+                    ${clearBtn}
+                    <button onclick="togglePartyStatus('${party.id}')" class="bg-yellow-500 hover:bg-yellow-600 text-white text-xs px-2 py-1 rounded mr-1" title="${party.status==='closed'?'Reopen':'Close'}">${party.status==='closed'?'Reopen':'Close'}</button>
+                    <button onclick="deleteParty('${party.id}')" class="bg-red-500 hover:bg-red-600 text-white text-xs px-2 py-1 rounded" title="Delete Party"><i class="fas fa-trash-alt"></i></button>
+                </td>
+            </tr>`;
+        });
+        html += `</tbody></table></div>`;
+        container.innerHTML = html;
+    }
+
+    function clearPartyBalance(partyId){
+        if(!confirm("Mark this party's balance as clear/paid?")) return;
+        let txns = getTransactions().filter(t => t.partyId === partyId);
+        txns.forEach(t => {
+            if(t.type === 'udhaar_di') t.type = 'udhaar_di_clear';
+            else if(t.type === 'udhaar_jama') t.type = 'udhaar_jama_clear';
+        });
+        saveTransactions(getTransactions());
+        renderPartyLedger();
+        alert("Balance marked as clear!");
+    }
+
+    function editPartyName(partyId){
+        let parties = getParties();
+        let party = parties.find(p=>p.id===partyId);
+        if(!party) return;
+        let newName = prompt("New name for party:", party.name);
+        if(newName && newName.trim() && newName.trim() !== party.name){
+            party.name = newName.trim();
+            saveParties(parties);
+            renderPartyLedger();
+        }
+    }
+
+    function togglePartyStatus(partyId){
+        let parties = getParties();
+        let party = parties.find(p=>p.id===partyId);
+        if(!party) return;
+        party.status = (party.status === "closed") ? "active" : "closed";
+        saveParties(parties);
+        renderPartyLedger();
+    }
+
+    function deleteParty(partyId){
+        if(!confirm("Delete this party and ALL its transactions permanently?")) return;
+        let parties = getParties().filter(p=>p.id !== partyId);
+        saveParties(parties);
+        let txns = getTransactions().filter(t=>t.partyId !== partyId);
+        saveTransactions(txns);
+        renderPartyLedger();
+    }
+
+    function showPartyDetailModal(partyId){
+        let parties = getParties();
+        let party = parties.find(p=>p.id===partyId);
+        if(!party) return;
+        let modal = document.createElement("div");
+        modal.className = "modal";
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width:920px; width:95%; max-height:92vh; overflow:auto; padding:16px;">
+                <div class="flex justify-between items-center mb-2">
+                    <div>
+                        <h3 class="text-2xl font-bold text-indigo-800">📒 ${escapeHtml(party.name)}</h3>
+                        <div class="text-xs text-gray-500">Party Ledger • Click row actions to edit/delete individual entries</div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="exportPartyPdfBtn" class="bg-red-600 text-white px-3 py-1.5 rounded text-sm flex items-center gap-1"><i class="fas fa-file-pdf"></i> PDF</button>
+                        <button id="closePartyModal" class="bg-gray-500 text-white px-4 py-1.5 rounded text-sm">Close</button>
+                    </div>
+                </div>
+                <div class="mb-3 p-2 bg-gray-50 rounded flex flex-wrap gap-2 items-end text-sm">
+                    <div><label class="text-xs text-gray-600">PDF From</label><input type="date" id="partyPdfFromDate" class="table-input" style="width:120px;"></div>
+                    <div><label class="text-xs text-gray-600">PDF To</label><input type="date" id="partyPdfToDate" class="table-input" style="width:120px;"></div>
+                    <button id="exportPartyRangePdfBtn" class="bg-red-700 text-white px-3 py-1 rounded text-xs">📄 Export Range</button>
+                </div>
+                <div class="mb-3 p-3 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl flex items-center justify-between">
+                    <div>
+                        <div class="text-xs uppercase tracking-widest text-indigo-600">Current Outstanding</div>
+                        <div id="modalOutstanding" class="text-4xl font-extrabold text-indigo-900"></div>
+                    </div>
+                    <div class="text-right text-sm">
+                        <div>Status: <span class="font-semibold">${party.status}</span> ${party.isFixed ? '<span class="fixed-badge">Fixed</span>' : ''}</div>
+                        <div class="text-[10px] text-gray-500 mt-0.5">Manage entries below • Changes saved instantly</div>
+                    </div>
+                </div>
+                <div id="partyTxnTableContainer" class="overflow-x-auto border rounded-lg max-h-[380px]"></div>
+
+                <div class="mt-4 pt-4 border-t">
+                    <h4 class="font-semibold mb-2 text-gray-700">➕ Add New or Edit Transaction</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-2 items-end">
+                        <div class="md:col-span-1"><label class="text-xs text-gray-600">Date</label><input type="date" id="modalTxnDate" class="table-input" value="${todayStr()}"></div>
+                        <div class="md:col-span-1"><label class="text-xs text-gray-600">Type</label>
+                            <select id="modalTxnType" class="table-input text-sm">
+                                <option value="udhaar_di">Udhaar Di (Credit Given)</option>
+                                <option value="udhaar_jama">Udhaar Jama (Payment Received)</option>
+                            </select>
+                        </div>
+                        <div class="md:col-span-1"><label class="text-xs text-gray-600">Amount (₹)</label><input type="number" id="modalTxnAmount" class="table-input" step="0.01" placeholder="0.00"></div>
+                        <div class="md:col-span-1"><label class="text-xs text-gray-600">Description / Bill Info</label><input type="text" id="modalTxnDesc" class="table-input" placeholder="e.g. Fuel bill #123"></div>
+                        <div class="md:col-span-1 flex gap-2">
+                            <button id="modalAddTxnBtn" class="flex-1 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded text-sm font-medium">Add New</button>
+                        </div>
+                    </div>
+                    <div id="editModeNote" class="hidden mt-1.5 text-xs bg-orange-100 text-orange-700 px-3 py-1 rounded flex items-center gap-2">
+                        Editing existing transaction • 
+                        <button id="cancelEditBtn" class="underline font-medium">Cancel Edit</button>
+                    </div>
+                </div>
+            </div>`;
+        document.body.appendChild(modal);
+
+        function refreshModalContent(){
+            let txns = getTransactions().filter(t=>t.partyId===partyId).sort((a,b)=>new Date(a.date)-new Date(b.date));
+            let outstanding = getPartyOutstanding(partyId);
+            let outEl = document.getElementById("modalOutstanding");
+            outEl.innerHTML = `₹${outstanding.toFixed(2)}`;
+            outEl.style.color = outstanding > 0 ? '#b91c1c' : (outstanding < 0 ? '#059669' : '#374151');
+
+            let container = document.getElementById("partyTxnTableContainer");
+            if(!txns.length){
+                container.innerHTML = `<div class="p-6 text-center text-gray-400">No udhaar transactions recorded for this party yet.<br>Use the form below to add first entry.</div>`;
+                return;
+            }
+            let running = 0;
+            let html = `<table class="w-full text-sm"><thead class="bg-gray-100 sticky top-0 z-10"><tr>
+                <th class="p-2 text-left w-24">Date</th>
+                <th class="p-2 text-left">Type</th>
+                <th class="p-2 text-right">Amount</th>
+                <th class="p-2 text-right">Running Bal</th>
+                <th class="p-2">Description</th>
+                <th class="p-2 w-16 text-center">Action</th>
+            </tr></thead><tbody>`;
+            txns.forEach(t => {
+                let sign = (t.type === "udhaar_di") ? 1 : -1;
+                running += sign * (parseFloat(t.amount)||0);
+                let typeLabel = t.type === "udhaar_di" ? '<span class="text-red-600">Udhaar Di</span>' : '<span class="text-emerald-600">Jama Received</span>';
+                let rowBg = t.type === "udhaar_di" ? "bg-red-50/60" : "bg-emerald-50/60";
+                html += `<tr class="${rowBg} border-b">
+                    <td class="p-2 font-mono text-xs">${t.date}</td>
+                    <td class="p-2">${typeLabel}</td>
+                    <td class="p-2 text-right font-semibold">₹${parseFloat(t.amount||0).toFixed(2)}</td>
+                    <td class="p-2 text-right font-bold ${running>0?'text-red-600':'text-emerald-600'}">₹${running.toFixed(2)}</td>
+                    <td class="p-2 text-xs text-gray-600 max-w-[180px] truncate" title="${escapeHtml(t.description||'')}">${escapeHtml(t.description||'-')}</td>
+                    <td class="p-2 text-center">
+                        <button class="editTxnBtn text-blue-600 hover:text-blue-800 p-0.5" data-id="${t.id}" title="Edit"><i class="fas fa-edit fa-sm"></i></button>
+                        <button class="delTxnBtn text-red-500 hover:text-red-700 p-0.5 ml-1" data-id="${t.id}" title="Delete"><i class="fas fa-trash-alt fa-sm"></i></button>
+                    </td>
+                </tr>`;
+            });
+            html += `</tbody></table>`;
+            container.innerHTML = html;
+
+            container.querySelectorAll(".delTxnBtn").forEach(b => {
+                b.onclick = () => {
+                    if(confirm("Permanently delete this udhaar entry?")){
+                        let updated = getTransactions().filter(tt => tt.id !== b.dataset.id);
+                        saveTransactions(updated);
+                        refreshModalContent();
+                        renderPartyLedger();
+                    }
+                };
+            });
+            container.querySelectorAll(".editTxnBtn").forEach(b => {
+                b.onclick = () => startEditTransaction(b.dataset.id);
+            });
+        }
+
+        function startEditTransaction(editId){
+            let allT = getTransactions();
+            let txn = allT.find(tt => tt.id === editId);
+            if(!txn) return;
+            document.getElementById("modalTxnDate").value = txn.date;
+            document.getElementById("modalTxnType").value = txn.type;
+            document.getElementById("modalTxnAmount").value = txn.amount;
+            document.getElementById("modalTxnDesc").value = txn.description || "";
+            let addBtn = document.getElementById("modalAddTxnBtn");
+            addBtn.innerHTML = `💾 Update #${editId.slice(-4)}`;
+            addBtn.onclick = () => performUpdate(editId);
+            document.getElementById("editModeNote").classList.remove("hidden");
+            document.getElementById("cancelEditBtn").onclick = () => resetToAddMode(addBtn);
+        }
+
+        function performUpdate(editId){
+            let d = document.getElementById("modalTxnDate").value;
+            let typ = document.getElementById("modalTxnType").value;
+            let amt = parseFloat(document.getElementById("modalTxnAmount").value);
+            let desc = document.getElementById("modalTxnDesc").value.trim();
+            if(!d || isNaN(amt) || amt <= 0){ alert("Please enter valid date and positive amount"); return; }
+            let allT = getTransactions();
+            let idx = allT.findIndex(tt => tt.id === editId);
+            if(idx > -1){
+                allT[idx].date = d;
+                allT[idx].type = typ;
+                allT[idx].amount = amt;
+                allT[idx].description = desc;
+                saveTransactions(allT);
+                resetToAddMode(document.getElementById("modalAddTxnBtn"));
+                refreshModalContent();
+                renderPartyLedger();
+            }
+        }
+
+        function resetToAddMode(addBtn){
+            addBtn.innerHTML = "Add New";
+            addBtn.onclick = performAddNew;
+            document.getElementById("editModeNote").classList.add("hidden");
+            document.getElementById("modalTxnAmount").value = "";
+            document.getElementById("modalTxnDesc").value = "";
+        }
+
+        function performAddNew(){
+            let d = document.getElementById("modalTxnDate").value;
+            let typ = document.getElementById("modalTxnType").value;
+            let amt = parseFloat(document.getElementById("modalTxnAmount").value);
+            let desc = document.getElementById("modalTxnDesc").value.trim();
+            if(!d || isNaN(amt) || amt <= 0){ alert("Date and positive amount are required"); return; }
+            let allT = getTransactions();
+            allT.push({
+                id: uid("t"),
+                partyId: partyId,
+                date: d,
+                type: typ,
+                amount: amt,
+                description: desc,
+                source: "manual"
+            });
+            saveTransactions(allT);
+            document.getElementById("modalTxnAmount").value = "";
+            document.getElementById("modalTxnDesc").value = "";
+            refreshModalContent();
+            renderPartyLedger();
+        }
+
+        document.getElementById("modalAddTxnBtn").onclick = performAddNew;
+        document.getElementById("closePartyModal").onclick = () => modal.remove();
+        document.getElementById("exportPartyPdfBtn").onclick = () => exportPartyLedgerPDF(partyId, party.name);
+        document.getElementById("exportPartyRangePdfBtn").onclick = async () => {
+            let fromDate = normalizeDateStr(document.getElementById("partyPdfFromDate").value);
+            let toDate = normalizeDateStr(document.getElementById("partyPdfToDate").value);
+            if(!fromDate || !toDate){ alert("Select both dates"); return; }
+            if(fromDate > toDate){ alert("From date must be before To date"); return; }
+            
+            let allTxns = getTransactions().filter(t => t.partyId === partyId && t.date >= fromDate && t.date <= toDate);
+            if(!allTxns.length){ alert("No transactions in date range"); return; }
+            
+            let rows = [];
+            allTxns.forEach(t => {
+                let typeLabel = {udhaar_di: 'Given', udhaar_jama: 'Received', udhaar_di_clear: 'Cleared', udhaar_jama_clear: 'Cleared'}[t.type] || t.type;
+                rows.push([t.date, typeLabel, t.description || '-', `₹${parseFloat(t.amount||0).toFixed(2)}`]);
+            });
+            
+            await generatePagedPDF({
+                title: `Party Ledger: ${party.name}`,
+                subtitle: `Transactions from ${fromDate} to ${toDate}`,
+                columns: [
+                    { label: "Date", align: "center" },
+                    { label: "Type", align: "center" },
+                    { label: "Description", align: "left" },
+                    { label: "Amount (₹)", align: "right" }
+                ],
+                rows: rows,
+                filename: `${party.name}_${fromDate}_to_${toDate}.pdf`,
+                footerNote: "Petrol Pump Manager - Party Ledger Report"
+            });
+        };
+        refreshModalContent();
+    }
+
+    async function exportPartyLedgerPDF(partyId, partyName){
+        let txns = getTransactions().filter(t=>t.partyId===partyId).sort((a,b)=>new Date(a.date)-new Date(b.date));
+        let outstanding = getPartyOutstanding(partyId);
+        let running = 0;
+        let rows = txns.map(t => {
+            let sign = t.type==="udhaar_di" ? 1 : -1;
+            running += sign * (parseFloat(t.amount)||0);
+            return [ t.date, t.type==="udhaar_di" ? "Udhaar Di (Credit Given)" : "Udhaar Jama (Received)", `₹${parseFloat(t.amount||0).toFixed(2)}`, `₹${running.toFixed(2)}`, escapeHtml(t.description||"-") ];
+        });
+        let statusText = outstanding>0 ? 'Receivable from Party' : outstanding<0 ? 'Payable / Advance' : 'Settled';
+
+        await generatePagedPDF({
+            title: "Party Ledger Statement",
+            subtitle: escapeHtml(partyName),
+            metaHtml: `<div><strong>Generated:</strong> ${new Date().toLocaleDateString('en-IN')}</div><div><strong>Total Transactions:</strong> ${txns.length}</div><div style="margin-left:auto; font-weight:700; color:${outstanding>0?'#b91c1c':'#166534'};">Final Outstanding: ₹${outstanding.toFixed(2)} (${statusText})</div>`,
+            columns: [ {label:"Date", align:"left"}, {label:"Type", align:"left"}, {label:"Amount (₹)", align:"right"}, {label:"Running Balance", align:"right"}, {label:"Description", align:"left"} ],
+            rows,
+            filename: `PartyLedger_${partyName.replace(/[^a-z0-9]/gi,"_")}.pdf`,
+            footerNote: "This is a system generated document from your Petrol Pump Manager app. Data is stored locally in your browser."
+        });
+    }
+
+    // Backup/Restore no black screen
+    function backupRestoreModal(){
+        let modal = document.createElement("div"); modal.className = "modal";
+        modal.innerHTML = `<div class="modal-content"><h3>💾 Backup / Restore / Clear</h3><button id="exportBtn" class="bg-green-600 text-white px-4 py-2 rounded w-full mb-2">📥 Export Data (Backup)</button><label class="mt-3 block text-sm font-bold">📤 Restore from file:</label><input type="file" id="restoreFileInput" accept=".json" class="border rounded p-1 w-full"><button id="restoreBtn" class="bg-blue-600 text-white px-4 py-2 rounded w-full mt-2">Restore & Reload</button><button id="clearAllBtn" class="bg-red-600 text-white px-4 py-2 rounded w-full mt-3" title="⚠️ WARNING: This will DELETE ALL data permanently!">🗑️ Clear ALL Data</button><button id="closeBackupModal" class="bg-gray-400 text-white px-4 py-2 rounded w-full mt-3">Close</button></div>`;
+        document.body.appendChild(modal);
+        document.getElementById("exportBtn").onclick = ()=>{
+            let allData = { daily: getDailyStore(), purchase: getPurchase(), parties: getParties(), transactions: getTransactions(), finTransactions: getFinTransactions() };
+            let a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([JSON.stringify(allData)],{type:"application/json"})); a.download = `pump_backup_${Date.now()}.json`; a.click(); modal.remove();
+        };
+        document.getElementById("restoreBtn").onclick = ()=>{
+            let file = document.getElementById("restoreFileInput").files[0];
+            if(!file){ alert("Select file"); return; }
+            let reader = new FileReader();
+            reader.onload = function(e){
+                try{
+                    let d = JSON.parse(e.target.result);
+                    if(d.daily) saveDailyStore(d.daily);
+                    if(d.purchase) savePurchase(d.purchase);
+                    if(d.parties) saveParties(d.parties);
+                    if(d.transactions) saveTransactions(d.transactions);
+                    if(d.finTransactions) saveFinTransactions(d.finTransactions);
+                    alert("Restored! Reloading...");
+                    location.reload();
+                }catch(err){ alert("Invalid backup file"); }
+            };
+            reader.readAsText(file);
+        };
+        document.getElementById("clearAllBtn").onclick = ()=>{
+            if(!confirm("⚠️ WARNING: This will PERMANENTLY delete ALL data (Daily Sales, Parties, Transactions, Purchases, Everything).\n\nAre you ABSOLUTELY sure?")){ return; }
+            if(!confirm("Last chance! Really delete everything? This CANNOT be undone!")){ return; }
+            localStorage.removeItem(STORE_DAILY);
+            localStorage.removeItem(STORE_PURCHASE);
+            localStorage.removeItem(STORE_PARTIES);
+            localStorage.removeItem(STORE_TRANS);
+            localStorage.removeItem(STORE_FIN_TRANS);
+            alert("✅ All data cleared! Page will reload now...");
+            location.reload();
+        };
+        document.getElementById("closeBackupModal").onclick = ()=>modal.remove();
+    }
+
+    // Event bindings and init
+    document.getElementById("addUdhaarDiDaily").onclick = ()=>{ udhaarDiRows.push({name:"",info:"",amount:""}); refreshDynamicTables(); };
+    document.getElementById("addUdhaarJamaDaily").onclick = ()=>{ udhaarJamaRows.push({name:"",info:"",amount:""}); refreshDynamicTables(); };
+    document.getElementById("addExtraDaily").onclick = ()=>{ extraRows.push({info:"",amount:""}); refreshDynamicTables(); };
+    document.getElementById("addOtherPaymentDaily").onclick = ()=>{ otherPaymentRows.push({info:"",amount:""}); refreshDynamicTables(); };
+    document.getElementById("addExpenseDaily").onclick = ()=>{ expenseRows.push({info:"",amount:""}); refreshDynamicTables(); };
+    document.getElementById("addCashDiyaDaily").onclick = ()=>{ cashDiyaRows.push({info:"",amount:""}); refreshDynamicTables(); };
+    document.getElementById("addOtherPayDaily").onclick = ()=>{ otherRows.push({method:"",amount:""}); refreshDynamicTables(); };
+    document.getElementById("saveDailyBtn").onclick = saveCurrentDaily;
+    document.getElementById("loadDailyBtn").onclick = ()=>loadDailyByDate(document.getElementById("dailyDate").value);
+    document.getElementById("clearFormBtn").onclick = clearDailyForm;
+    document.getElementById("dailyDate").value = todayStr();
+    document.getElementById("petrolTestLtr").addEventListener("input",updateSaleDetails);
+    document.getElementById("dieselTestLtr").addEventListener("input",updateSaleDetails);
+    document.getElementById("petrolPrice").addEventListener("input",updateSaleDetails);
+    document.getElementById("dieselPrice").addEventListener("input",updateSaleDetails);
+    document.getElementById("cashDaily").addEventListener("input",updateFinalTotals);
+    document.getElementById("upiDaily").addEventListener("input",updateFinalTotals);
+    document.getElementById("tank1Dip").addEventListener("input",updateTankVolumes);
+    document.getElementById("tank1Closing").addEventListener("input",updateTankVolumes);
+    document.getElementById("tank2Dip").addEventListener("input",updateTankVolumes);
+    document.getElementById("tank2Closing").addEventListener("input",updateTankVolumes);
+    document.getElementById("showTankerModal1").onclick = ()=>showTankerModal("Petrol");
+    document.getElementById("showTankerModal2").onclick = ()=>showTankerModal("Diesel");
+    document.getElementById("showMixedTankerModal").onclick = showMixedTankerModal;
+    document.getElementById("calculateTotalsBtn").onclick = ()=>{ updateFinalTotals(); alert("Recalculated"); };
+    document.getElementById("generateUdhaarReport").onclick = renderUdhaarReport;
+    document.getElementById("downloadUdhaarPDF").onclick = downloadUdhaarPDF;
+    document.getElementById("filterTransactionsBtn").onclick = renderTransactionsLedger;
+    document.getElementById("addManualTransBtn").onclick = ()=>{
+        let d=prompt("Date (YYYY-MM-DD)", todayStr());
+        if(!d) return;
+        let ty=prompt("Type - enter exactly one of: expense / extra / otherPayment / cashDiya");
+        if(!ty) return;
+        ty = ty.trim();
+        if(!["expense","extra","otherPayment","cashDiya"].includes(ty)){ alert("Invalid type. Must be exactly: expense, extra, otherPayment, or cashDiya"); return; }
+        let desc=prompt("Description") || "";
+        let amt=parseFloat(prompt("Amount"));
+        if(isNaN(amt) || amt<=0){ alert("Please enter a valid positive amount"); return; }
+        addFinTransaction(d,ty,desc,amt,null);
+        renderTransactionsLedger();
+    };
+    document.getElementById("exportTransPdfBtn").onclick = exportTransactionsPDF;
+    document.getElementById("addPurchaseBtn").onclick = ()=>{
+        let d=prompt("Date (YYYY-MM-DD)", todayStr());
+        if(!d) return;
+        let inv=prompt("Invoice No");
+        if(!inv) return;
+        let prod=prompt("Product - enter exactly: Petrol or Diesel");
+        if(!prod) return;
+        prod = prod.trim();
+        if(!/^petrol$/i.test(prod) && !/^diesel$/i.test(prod)){ alert("Invalid product. Must be exactly 'Petrol' or 'Diesel'"); return; }
+        prod = prod.charAt(0).toUpperCase() + prod.slice(1).toLowerCase();
+        let lit=parseFloat(prompt("Liters"));
+        if(isNaN(lit) || lit<=0){ alert("Please enter valid positive liters"); return; }
+        let amt=parseFloat(prompt("Total Amount"));
+        if(isNaN(amt) || amt<=0){ alert("Please enter a valid positive amount"); return; }
+        let p=getPurchase();
+        p.push({date:d,invoiceNo:inv,vehicleNo:"",supplier:"",product:prod,liters:lit,totalAmount:amt});
+        savePurchase(p);
+        renderPurchases();
+    };
+    document.getElementById("addPartyBtn").onclick = ()=>{ let n=prompt("Party Name"); if(n && n.trim()){ let p=getParties(); if(p.some(pp=>pp.name.toLowerCase()===n.trim().toLowerCase())){ alert("Party with this name already exists."); return; } p.push({id:uid("p"), name:n.trim(), isFixed:false, status:"active"}); saveParties(p); renderPartyLedger(); } };
+    document.getElementById("addTransactionBtn").onclick = () => {
+        let parties = getParties().filter(p=>p.status!=="closed");
+        if(!parties.length){ alert("No active parties. Add one first."); return; }
+        let names = parties.map(p=>p.name).join(", ");
+        let input = prompt("Enter exact Party Name for manual entry:\nAvailable: " + names);
+        if(!input) return;
+        let p = parties.find(pp => pp.name.toLowerCase() === input.toLowerCase());
+        if(!p){ alert("Party not found. Use exact name from list."); return; }
+        let typ = prompt("Type? (udhaar_di = Credit Given / udhaar_jama = Payment Received)", "udhaar_di");
+        if(!typ || (typ!=="udhaar_di" && typ!=="udhaar_jama")) return;
+        let amtStr = prompt("Amount (₹)");
+        let amt = parseFloat(amtStr);
+        if(isNaN(amt) || amt<=0) return;
+        let desc = prompt("Description / Info (optional)") || "";
+        let d = prompt("Date (YYYY-MM-DD)", todayStr());
+        if(!d) return;
+        let allT = getTransactions();
+        allT.push({id:uid("t"), partyId:p.id, date:d, type:typ, amount:amt, description:desc, source:"manual"});
+        saveTransactions(allT);
+        renderPartyLedger();
+        alert("Manual transaction added to " + p.name + "'s ledger.");
+    };
+    document.getElementById("searchPartyBtn").onclick = renderPartyLedger;
+    document.getElementById("showClosedCheckbox").onchange = renderPartyLedger;
+    document.getElementById("backupBtn").onclick = backupRestoreModal;
+
+    document.querySelectorAll(".tab-btn:not(#backupBtn)").forEach(btn=>btn.addEventListener("click",()=>{
+        document.querySelectorAll(".tab-content").forEach(t=>t.classList.add("hidden"));
+        document.getElementById(btn.dataset.tab+"Tab").classList.remove("hidden");
+        document.querySelectorAll(".tab-btn:not(#backupBtn)").forEach(b=>b.classList.remove("tab-active"));
+        btn.classList.add("tab-active");
+    }));
+    document.querySelectorAll(".tab-content").forEach(t=>t.classList.add("hidden"));
+    document.getElementById("dailyTab").classList.remove("hidden");
+    document.querySelector('.tab-btn[data-tab="daily"]').classList.add("tab-active");
+    
+    document.getElementById("partyLedgerFilter").addEventListener("change", renderPartyLedger);
+
+    initNozzleTables(); recalcNozzles(); updateTankVolumes(); loadDailyByDate(todayStr()); renderPurchases(); renderPartyLedger(); renderTransactionsLedger(); refreshDynamicTables();
+    function escapeHtml(s){ return String(s).replace(/[&<>]/g, m=> m==='&'?'&amp;': m==='<'?'&lt;':'&gt;'); }
+    window.extraRows=extraRows; window.otherPaymentRows=otherPaymentRows; window.expenseRows=expenseRows; window.cashDiyaRows=cashDiyaRows; window.otherRows=otherRows;
+</script>
+</body>
+</html>
